@@ -1,0 +1,63 @@
+pipeline {
+    agent any
+
+    environment {
+        // Jenkins Credentials IDs
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-credentials') 
+        SSH_CREDENTIALS = credentials('ssh-credentials') 
+
+        // Docker and deployment configuration
+        DOCKER_IMAGE = "omanaraya/springboot-hello:latest"  // Replace with your Docker Hub repo
+        REMOTE_SERVER = "your.server.com"                  // Replace with your deployment server
+        APP_CONTAINER_NAME = "springboot-hello"
+        APP_PORT = "8080"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/ommpc/Envision-test.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                docker build -t ${DOCKER_IMAGE} .
+                """
+            }
+        }
+
+        stage('Login & Push to Docker Hub') {
+            steps {
+                sh """
+                echo ${DOCKER_HUB_CREDENTIALS_PSW} | docker login -u ${DOCKER_HUB_CREDENTIALS_USR} --password-stdin
+                docker push ${DOCKER_IMAGE}
+                """
+            }
+        }
+
+        stage('Deploy to Server') {
+            steps {
+                sh """
+                ssh -o StrictHostKeyChecking=no ${SSH_CREDENTIALS_USR}@${REMOTE_SERVER} '
+                    docker pull ${DOCKER_IMAGE} &&
+                    docker stop ${APP_CONTAINER_NAME} || true &&
+                    docker rm ${APP_CONTAINER_NAME} || true &&
+                    docker run -d --name ${APP_CONTAINER_NAME} -p ${APP_PORT}:${APP_PORT} ${DOCKER_IMAGE}
+                '
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "Deployment successful!"
+        }
+        failure {
+            echo "Deployment failed."
+        }
+    }
+}
